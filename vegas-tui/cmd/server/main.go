@@ -12,6 +12,8 @@ import (
 	"rebel-hacks-tui/internal/config"
 	"rebel-hacks-tui/internal/db"
 	"rebel-hacks-tui/internal/server"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func main() {
@@ -23,11 +25,16 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	pool, err := db.Connect(ctx, cfg.DatabaseURL)
-	if err != nil {
-		log.Fatalf("db: %v", err)
+	// Database is optional — only connect if configured
+	var pool *pgxpool.Pool
+	if cfg.HasDatabase {
+		pool, err = db.Connect(ctx, cfg.DatabaseURL)
+		if err != nil {
+			log.Printf("WARNING: db connection failed: %v (continuing without DB)", err)
+		} else {
+			defer pool.Close()
+		}
 	}
-	defer pool.Close()
 
 	router := server.NewRouter(cfg, pool)
 
@@ -45,7 +52,14 @@ func main() {
 		srv.Close()
 	}()
 
-	log.Printf("Server listening on :%s", cfg.ServerPort)
+	log.Printf("V.E.G.A.S. Server listening on :%s", cfg.ServerPort)
+	if pool != nil {
+		log.Println("Mode: Full (DB + Auth + Chat)")
+	} else {
+		log.Println("Mode: Chat-only (Ollama relay)")
+	}
+	log.Printf("Ollama: %s", cfg.OllamaURL)
+
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("server: %v", err)
 	}

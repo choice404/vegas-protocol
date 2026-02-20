@@ -1,6 +1,8 @@
 package server
 
 import (
+	"net/http"
+
 	"rebel-hacks-tui/internal/config"
 	"rebel-hacks-tui/internal/server/handlers"
 	"rebel-hacks-tui/internal/server/middleware"
@@ -15,21 +17,42 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool) *chi.Mux {
 	r.Use(chimw.Logger)
 	r.Use(chimw.Recoverer)
 
-	auth := &handlers.AuthHandler{
-		SupabaseURL:     cfg.SupabaseURL,
-		SupabaseAnonKey: cfg.SupabaseAnonKey,
+	chat := &handlers.ChatHandler{
+		OllamaURL: cfg.OllamaURL,
 	}
 
-	// Public routes
-	r.Get("/health", handlers.Health(pool))
-	r.Post("/auth/signup", auth.Signup)
-	r.Post("/auth/login", auth.Login)
+	// Always available
+	r.Post("/api/chat", chat.Chat)
 
-	// Protected routes
-	r.Group(func(r chi.Router) {
-		r.Use(middleware.Auth(cfg.SupabaseJWTSecret))
-		// Add authenticated endpoints here
+	// Health check — works with or without DB
+	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if pool != nil {
+			if err := pool.Ping(r.Context()); err != nil {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				w.Write([]byte(`{"status":"unhealthy","db":"disconnected","chat":"ok"}`))
+				return
+			}
+			w.Write([]byte(`{"status":"ok","db":"connected","chat":"ok"}`))
+		} else {
+			w.Write([]byte(`{"status":"ok","db":"not configured","chat":"ok"}`))
+		}
 	})
+
+	// Auth + protected routes — only if Supabase is configured
+	if cfg.HasSupabase {
+		auth := &handlers.AuthHandler{
+			SupabaseURL:     cfg.SupabaseURL,
+			SupabaseAnonKey: cfg.SupabaseAnonKey,
+		}
+		r.Post("/auth/signup", auth.Signup)
+		r.Post("/auth/login", auth.Login)
+
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.Auth(cfg.SupabaseJWTSecret))
+			// Add authenticated endpoints here
+		})
+	}
 
 	return r
 }

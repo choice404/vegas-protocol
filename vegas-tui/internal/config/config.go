@@ -1,18 +1,23 @@
 package config
 
 import (
-	"fmt"
+	"log"
 	"os"
 
 	"github.com/joho/godotenv"
 )
 
 type Config struct {
-	DatabaseURL      string
-	SupabaseURL      string
-	SupabaseAnonKey  string
+	DatabaseURL       string
+	SupabaseURL       string
+	SupabaseAnonKey   string
 	SupabaseJWTSecret string
-	ServerPort       string
+	ServerPort        string
+	OllamaURL         string
+
+	// Derived flags
+	HasDatabase bool
+	HasSupabase bool
 }
 
 func Load() (*Config, error) {
@@ -25,22 +30,27 @@ func Load() (*Config, error) {
 		SupabaseAnonKey:   os.Getenv("SUPABASE_ANON_KEY"),
 		SupabaseJWTSecret: os.Getenv("SUPABASE_JWT_SECRET"),
 		ServerPort:        os.Getenv("SERVER_PORT"),
+		OllamaURL:         os.Getenv("OLLAMA_URL"),
 	}
 
-	if cfg.DatabaseURL == "" {
-		return nil, fmt.Errorf("DATABASE_URL is required")
-	}
-	if cfg.SupabaseURL == "" {
-		return nil, fmt.Errorf("SUPABASE_URL is required")
-	}
-	if cfg.SupabaseAnonKey == "" {
-		return nil, fmt.Errorf("SUPABASE_ANON_KEY is required")
-	}
-	if cfg.SupabaseJWTSecret == "" {
-		return nil, fmt.Errorf("SUPABASE_JWT_SECRET is required")
-	}
 	if cfg.ServerPort == "" {
 		cfg.ServerPort = "8080"
+	}
+	if cfg.OllamaURL == "" {
+		cfg.OllamaURL = "http://localhost:11434"
+	}
+
+	// Database is optional — server runs in chat-only mode without it
+	cfg.HasDatabase = cfg.DatabaseURL != ""
+
+	// Supabase auth is optional
+	cfg.HasSupabase = cfg.SupabaseURL != "" && cfg.SupabaseAnonKey != "" && cfg.SupabaseJWTSecret != ""
+
+	if !cfg.HasDatabase {
+		log.Println("DATABASE_URL not set — running in chat-only mode (no DB)")
+	}
+	if !cfg.HasSupabase {
+		log.Println("Supabase credentials not set — auth endpoints disabled")
 	}
 
 	return cfg, nil
