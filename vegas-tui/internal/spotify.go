@@ -24,16 +24,24 @@ type spotifyStateMsg struct {
 	Track    string
 	Artist   string
 	Album    string
+	ImageURL string
 	Playing  bool
 	Progress int // ms
 	Duration int // ms
 	DeviceOK bool
+	Shuffle  bool
+	Repeat   string // "off", "track", "context"
+	Volume   int    // 0-100
 	Err      error
 }
 
 type spotifyActionMsg struct {
-	Action string // "play", "pause", "next", "prev"
+	Action string // "play", "pause", "next", "prev", "shuffle", "repeat", "volume"
 	Err    error
+}
+
+type spotifyAuthURLMsg struct {
+	URL string
 }
 
 type spotifyAuthCompleteMsg struct {
@@ -72,15 +80,26 @@ func newSpotifyClient(auth *spotifyauth.Authenticator, tok *oauth2.Token) *spoti
 
 // --- tea.Cmd functions ---
 
-func spotifyAuthCmd(auth *spotifyauth.Authenticator) tea.Cmd {
+// spotifyAuthURLCmd computes the auth URL, tries to open a browser, and
+// returns spotifyAuthURLMsg immediately so the TUI can display the URL.
+func spotifyAuthURLCmd(auth *spotifyauth.Authenticator) tea.Cmd {
 	return func() tea.Msg {
 		state := "vegas-protocol-auth"
 		url := auth.AuthURL(state)
 
-		// Try to open browser
+		// Try to open browser (may fail silently on headless Pi)
 		_ = exec.Command("xdg-open", url).Start()
 
-		// Start temporary HTTP server for callback
+		return spotifyAuthURLMsg{URL: url}
+	}
+}
+
+// spotifyAuthWaitCmd starts the callback HTTP server and blocks until
+// the OAuth callback arrives or 2 minutes elapse.
+func spotifyAuthWaitCmd(auth *spotifyauth.Authenticator) tea.Cmd {
+	return func() tea.Msg {
+		state := "vegas-protocol-auth"
+
 		tokenCh := make(chan *oauth2.Token, 1)
 		errCh := make(chan error, 1)
 
@@ -138,6 +157,9 @@ func fetchSpotifyState(client *spotify.Client) tea.Cmd {
 			Playing:  state.Playing,
 			Progress: int(state.Progress),
 			DeviceOK: state.Device.ID != "",
+			Shuffle:  state.ShuffleState,
+			Repeat:   state.RepeatState,
+			Volume:   int(state.Device.Volume),
 		}
 
 		if state.Item != nil {
@@ -153,6 +175,11 @@ func fetchSpotifyState(client *spotify.Client) tea.Cmd {
 			}
 			msg.Artist = artists
 			msg.Album = state.Item.Album.Name
+
+			// Pick smallest album image (last in slice)
+			if images := state.Item.Album.Images; len(images) > 0 {
+				msg.ImageURL = images[len(images)-1].URL
+			}
 		}
 
 		return msg
@@ -192,6 +219,39 @@ func spotifyPrevCmd(client *spotify.Client) tea.Cmd {
 		defer cancel()
 		err := client.Previous(ctx)
 		return spotifyActionMsg{Action: "prev", Err: err}
+	}
+}
+
+func spotifyShuffleCmd(client *spotify.Client, state bool) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		err := client.Shuffle(ctx, state)
+		return spotifyActionMsg{Action: "shuffle", Err: err}
+	}
+}
+
+func spotifyRepeatCmd(client *spotify.Client, state string) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		err := client.Repeat(ctx, state)
+		return spotifyActionMsg{Action: "repeat", Err: err}
+	}
+}
+
+func spotifyVolumeCmd(client *spotify.Client, percent int) tea.Cmd {
+	if percent < 0 {
+		percent = 0
+	}
+	if percent > 100 {
+		percent = 100
+	}
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		err := client.Volume(ctx, percent)
+		return spotifyActionMsg{Action: "volume", Err: err}
 	}
 }
 

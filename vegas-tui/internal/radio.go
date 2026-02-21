@@ -10,9 +10,10 @@ import (
 	"github.com/choice404/vegas-protocol/vegas-tui/internal/theme"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	zone "github.com/lrstanley/bubblezone"
-	spotifyauth "github.com/zmb3/spotify/v2/auth"
 	"github.com/zmb3/spotify/v2"
+	spotifyauth "github.com/zmb3/spotify/v2/auth"
 	"golang.org/x/oauth2"
 )
 
@@ -29,8 +30,8 @@ type radioTickMsg struct{}
 type radioPollingMsg struct{}
 
 type RadioModel struct {
-	state radioState
-	auth  *spotifyauth.Authenticator
+	state  radioState
+	auth   *spotifyauth.Authenticator
 	client *spotify.Client
 	token  *oauth2.Token
 
@@ -45,6 +46,18 @@ type RadioModel struct {
 	durationMs int
 	deviceOK   bool
 
+	// Auth URL for headless display
+	authURL string
+
+	// Album art
+	albumArt    string
+	albumArtURL string
+
+	// Shuffle / Repeat / Volume
+	shuffle bool
+	repeat  string // "off", "track", "context"
+	volume  int    // 0-100
+
 	eqBars []int
 
 	appSettings *settings.Settings
@@ -54,6 +67,7 @@ func NewRadioModel(s *settings.Settings) RadioModel {
 	return RadioModel{
 		state:       radioDisconnected,
 		eqBars:      make([]int, 16),
+		repeat:      "off",
 		appSettings: s,
 	}
 }
@@ -102,6 +116,23 @@ func (m RadioModel) Update(msg tea.Msg) (RadioModel, tea.Cmd) {
 			if m.state == radioConnected && m.client != nil {
 				return m, spotifyPrevCmd(m.client)
 			}
+		case "s":
+			if m.state == radioConnected && m.client != nil {
+				return m, spotifyShuffleCmd(m.client, !m.shuffle)
+			}
+		case "r":
+			if m.state == radioConnected && m.client != nil {
+				next := cycleRepeat(m.repeat)
+				return m, spotifyRepeatCmd(m.client, next)
+			}
+		case "+", "=":
+			if m.state == radioConnected && m.client != nil {
+				return m, spotifyVolumeCmd(m.client, m.volume+5)
+			}
+		case "-":
+			if m.state == radioConnected && m.client != nil {
+				return m, spotifyVolumeCmd(m.client, m.volume-5)
+			}
 		}
 
 	case tea.MouseMsg:
@@ -121,12 +152,30 @@ func (m RadioModel) Update(msg tea.Msg) (RadioModel, tea.Cmd) {
 				if zone.Get("radio-prev").InBounds(msg) && m.client != nil {
 					return m, spotifyPrevCmd(m.client)
 				}
+				if zone.Get("radio-shuffle").InBounds(msg) && m.client != nil {
+					return m, spotifyShuffleCmd(m.client, !m.shuffle)
+				}
+				if zone.Get("radio-repeat").InBounds(msg) && m.client != nil {
+					next := cycleRepeat(m.repeat)
+					return m, spotifyRepeatCmd(m.client, next)
+				}
+				if zone.Get("radio-volup").InBounds(msg) && m.client != nil {
+					return m, spotifyVolumeCmd(m.client, m.volume+5)
+				}
+				if zone.Get("radio-voldn").InBounds(msg) && m.client != nil {
+					return m, spotifyVolumeCmd(m.client, m.volume-5)
+				}
 			case radioError:
 				if zone.Get("radio-retry").InBounds(msg) {
 					return m.retry()
 				}
 			}
 		}
+
+	case spotifyAuthURLMsg:
+		m.authURL = msg.URL
+		// Now start the callback server to wait for the auth response
+		return m, spotifyAuthWaitCmd(m.auth)
 
 	case spotifyAuthCompleteMsg:
 		if msg.Err != nil {
@@ -143,6 +192,7 @@ func (m RadioModel) Update(msg tea.Msg) (RadioModel, tea.Cmd) {
 		}
 		m.client = newSpotifyClient(m.auth, m.token)
 		m.state = radioConnected
+		m.authURL = ""
 		m.retryCount = 0
 		return m, tea.Batch(
 			saveSpotifyTokenCmd(m.token),
@@ -168,9 +218,32 @@ func (m RadioModel) Update(msg tea.Msg) (RadioModel, tea.Cmd) {
 		m.progressMs = msg.Progress
 		m.durationMs = msg.Duration
 		m.deviceOK = msg.DeviceOK
+		m.shuffle = msg.Shuffle
+		m.repeat = msg.Repeat
+		m.volume = msg.Volume
+
+		var cmds []tea.Cmd
+
+		// Fetch new album art if image URL changed
+		if msg.ImageURL != "" && msg.ImageURL != m.albumArtURL {
+			m.albumArtURL = msg.ImageURL
+			cmds = append(cmds, fetchAlbumArtCmd(msg.ImageURL))
+		}
+
 		// Re-save token in case oauth2 transport refreshed it
 		if m.token != nil {
-			return m, saveSpotifyTokenCmd(m.token)
+			cmds = append(cmds, saveSpotifyTokenCmd(m.token))
+		}
+
+		if len(cmds) > 0 {
+			return m, tea.Batch(cmds...)
+		}
+		return m, nil
+
+	case albumArtMsg:
+		// Only store art if the URL matches what we requested
+		if msg.ImageURL == m.albumArtURL {
+			m.albumArt = msg.Art
 		}
 		return m, nil
 
@@ -213,7 +286,6 @@ func (m RadioModel) Update(msg tea.Msg) (RadioModel, tea.Cmd) {
 		return m, nil
 
 	case spotifyTokenSavedMsg:
-		// Nothing to do
 		return m, nil
 	}
 
@@ -228,7 +300,8 @@ func (m RadioModel) startAuth() (RadioModel, tea.Cmd) {
 		return m, nil
 	}
 	m.state = radioAuthenticating
-	return m, spotifyAuthCmd(m.auth)
+	m.authURL = ""
+	return m, spotifyAuthURLCmd(m.auth)
 }
 
 func (m RadioModel) togglePlayPause() (RadioModel, tea.Cmd) {
@@ -262,6 +335,17 @@ func (m RadioModel) retry() (RadioModel, tea.Cmd) {
 	}
 	// Otherwise start fresh auth
 	return m.startAuth()
+}
+
+func cycleRepeat(current string) string {
+	switch current {
+	case "off":
+		return "track"
+	case "track":
+		return "context"
+	default:
+		return "off"
+	}
 }
 
 func (m RadioModel) View(width, height int) string {
@@ -300,34 +384,55 @@ func (m RadioModel) viewAuthenticating() string {
 	b.WriteString(theme.AmberStyle.Render("  AUTHENTICATING..."))
 	b.WriteString("\n\n")
 	b.WriteString(theme.DimStyle.Render("  Waiting for callback on http://127.0.0.1:8888/callback ..."))
+
+	if m.authURL != "" {
+		b.WriteString("\n\n")
+		b.WriteString(theme.BaseStyle.Render("  If no browser opened, visit this URL:"))
+		b.WriteString("\n")
+		b.WriteString(theme.AmberStyle.Render("  " + m.authURL))
+	}
+
 	return b.String()
 }
 
 func (m RadioModel) viewConnected(width int) string {
 	var b strings.Builder
 
-	// Now playing info
-	b.WriteString(theme.DimStyle.Render("  NOW PLAYING:"))
-	b.WriteString("\n")
+	// --- Build track info column ---
+	var info strings.Builder
+	info.WriteString(theme.DimStyle.Render("NOW PLAYING:"))
+	info.WriteString("\n")
 
 	trackDisplay := m.trackName
 	if trackDisplay == "" {
 		trackDisplay = "No track"
 	}
-	b.WriteString(fmt.Sprintf("  %s\n", theme.BoldStyle.Render(trackDisplay)))
+	info.WriteString(theme.BoldStyle.Render(trackDisplay))
+	info.WriteString("\n")
 
 	artistDisplay := m.artistName
 	if artistDisplay == "" {
 		artistDisplay = "Unknown Artist"
 	}
-	b.WriteString(fmt.Sprintf("  %s\n", theme.AmberStyle.Render(artistDisplay)))
+	info.WriteString(theme.AmberStyle.Render(artistDisplay))
+	info.WriteString("\n")
 
 	albumDisplay := m.albumName
 	if albumDisplay == "" {
 		albumDisplay = "Unknown Album"
 	}
-	b.WriteString(fmt.Sprintf("  %s\n", theme.DimStyle.Render(albumDisplay)))
-	b.WriteString("\n")
+	info.WriteString(theme.DimStyle.Render(albumDisplay))
+
+	// --- Layout: album art (left) + track info (right) ---
+	if m.albumArt != "" {
+		artBox := albumArtBox(m.albumArt)
+		joined := lipgloss.JoinHorizontal(lipgloss.Top, "  "+artBox, "  "+info.String())
+		b.WriteString(joined)
+	} else {
+		// No art yet, just show track info indented
+		b.WriteString("  " + strings.ReplaceAll(info.String(), "\n", "\n  "))
+	}
+	b.WriteString("\n\n")
 
 	// Progress bar
 	barWidth := width - 20
@@ -366,7 +471,7 @@ func (m RadioModel) viewConnected(width int) string {
 	}
 	b.WriteString("\n\n")
 
-	// Controls
+	// Playback controls
 	playBtn := "[ PLAY ]"
 	if m.playing {
 		playBtn = "[ PAUSE ]"
@@ -379,7 +484,49 @@ func (m RadioModel) viewConnected(width int) string {
 	b.WriteString(controls)
 	b.WriteString("\n\n")
 
-	b.WriteString(theme.DimStyle.Render("  [Enter/Space] Play/Pause  [n] Next  [p] Prev"))
+	// Shuffle / Repeat / Volume row
+	shuffleLabel := "OFF"
+	shuffleStyle := theme.DimStyle
+	if m.shuffle {
+		shuffleLabel = "ON"
+		shuffleStyle = theme.AmberStyle
+	}
+
+	repeatLabel := strings.ToUpper(m.repeat)
+	if repeatLabel == "" {
+		repeatLabel = "OFF"
+	}
+	repeatStyle := theme.DimStyle
+	if m.repeat == "track" || m.repeat == "context" {
+		repeatStyle = theme.AmberStyle
+	}
+
+	volFilled := m.volume / 10
+	volEmpty := 10 - volFilled
+	volBar := theme.BaseStyle.Render(strings.Repeat("█", volFilled)) +
+		theme.DimStyle.Render(strings.Repeat("░", volEmpty))
+
+	statusLine := fmt.Sprintf("  SHUFFLE: %s    REPEAT: %s    VOL: %s %d%%",
+		shuffleStyle.Render(shuffleLabel),
+		repeatStyle.Render(repeatLabel),
+		volBar,
+		m.volume,
+	)
+	b.WriteString(theme.BaseStyle.Render(statusLine))
+	b.WriteString("\n")
+
+	// Clickable buttons for shuffle/repeat/volume
+	controlLine := fmt.Sprintf("  %s       %s          %s %s",
+		zone.Mark("radio-shuffle", theme.BaseStyle.Render("[ SHFL ]")),
+		zone.Mark("radio-repeat", theme.BaseStyle.Render("[ RPT ]")),
+		zone.Mark("radio-voldn", theme.BaseStyle.Render("[ - ]")),
+		zone.Mark("radio-volup", theme.BaseStyle.Render("[ + ]")),
+	)
+	b.WriteString(controlLine)
+	b.WriteString("\n\n")
+
+	// Help line
+	b.WriteString(theme.DimStyle.Render("  [Space] Play/Pause  [n] Next  [p] Prev  [s] Shuffle  [r] Repeat  [+/-] Vol"))
 
 	return b.String()
 }

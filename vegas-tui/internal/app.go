@@ -108,7 +108,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, cmd
 
 	// Spotify messages routed to radio regardless of active tab
-	case radioTickMsg, radioPollingMsg, spotifyStateMsg, spotifyActionMsg, spotifyAuthCompleteMsg, spotifyTokenSavedMsg:
+	case radioTickMsg, radioPollingMsg, spotifyStateMsg, spotifyActionMsg, spotifyAuthURLMsg, spotifyAuthCompleteMsg, spotifyTokenSavedMsg, albumArtMsg:
 		var cmd tea.Cmd
 		a.radio, cmd = a.radio.Update(msg)
 		return a, cmd

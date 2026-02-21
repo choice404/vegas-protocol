@@ -62,7 +62,9 @@ _Coming soon._
 
 **Project Browser** -- Browse project directories, search with filtering, navigate file trees, and open files directly in your preferred editor.
 
-**Visual Radio** -- Five themed radio stations with an animated equalizer, frequency dial, and playback controls.
+**Spotify Radio** -- Real-time Spotify playback with ASCII-rendered album art, animated equalizer, and full controls (play/pause, next/prev, shuffle, repeat, volume). Displays the auth URL in the TUI for headless Pi deployment. Falls back gracefully when Spotify is not connected.
+
+**Git Integration** -- View git status, branch info, stage files, commit, push, pull, and fetch directly from the PROJ tab.
 
 **ASCII Map** -- A scrollable Mojave Wasteland map with drag-to-scroll and mouse wheel support.
 
@@ -213,7 +215,7 @@ Then start the server:
 | 3   | DATA   | `3` | AI chat terminal. Type a query and press `Enter` to send.                                                     |
 | 4   | QUESTS | `4` | Project management. `A` for new quest, `a` for new task, `d` to delete, `Enter`/`Space` to toggle completion. |
 | 5   | PROJ   | `5` | Project browser. `/` to search, `e` to edit file, `P` to add directory, `Esc` to go back.                     |
-| 6   | RADIO  | `6` | Radio player. `Space` to play/pause, `n`/`p` for next/prev.                                                   |
+| 6   | RADIO  | `6` | Spotify radio. `Space` play/pause, `n`/`p` next/prev, `s` shuffle, `r` repeat, `+`/`-` volume.                |
 | 7   | MAP    | `7` | ASCII map. Arrow keys or `hjkl` to scroll, click-drag to pan.                                                 |
 | 8   | SET    | `8` | Settings editor. `Enter` to edit, `s` to save to disk.                                                        |
 | 9   | EXIT   | `9` | Exit the program                                                                                              |
@@ -235,6 +237,25 @@ Settings are stored at `~/.config/vegas-protocol/settings.json` and can be edite
 
 Quest data is stored at `~/.config/vegas-protocol/quests.json`.
 
+### Spotify
+
+The RADIO tab connects to Spotify for real-time playback. To set it up:
+
+1. Create a Spotify app at https://developer.spotify.com/dashboard
+2. Set the redirect URI to `http://127.0.0.1:8888/callback`
+3. Export your credentials:
+
+```bash
+export SPOTIFY_ID="your-client-id"
+export SPOTIFY_SECRET="your-client-secret"
+```
+
+4. Launch the TUI, go to the RADIO tab, and press `Enter` to authenticate
+5. A browser window will open (or the auth URL is displayed in the TUI for headless setups)
+6. After authorizing, the token is saved to `~/.config/vegas-protocol/spotify_token.json` and reused across sessions
+
+**Pi deployment:** Copy `spotify_token.json` from a machine with a browser to the Pi's `~/.config/vegas-protocol/` directory, and set the same `SPOTIFY_ID`/`SPOTIFY_SECRET` env vars. The TUI will connect immediately without needing a browser.
+
 ---
 
 ## Project Structure
@@ -252,7 +273,10 @@ vegas-tui/
 │   ├── data.go               # AI chat tab
 │   ├── quests.go             # Quest management tab
 │   ├── projects.go           # Project browser tab
-│   ├── radio.go              # Radio player tab
+│   ├── radio.go              # Spotify radio player tab
+│   ├── spotify.go            # Spotify auth, API commands, state polling
+│   ├── albumart.go           # Album art fetch, decode, ASCII render
+│   ├── git.go                # Git integration for project browser
 │   ├── mapview.go            # Map viewer tab
 │   ├── settingsview.go       # Settings editor tab
 │   ├── theme/                # Colors, styles, ASCII art
@@ -273,27 +297,6 @@ vegas-tui/
 ## TODO
 
 The following features are planned for future development:
-
-### Git Integration for Projects
-
-- Display git status (branch, dirty state, ahead/behind) for each project in the PROJ tab
-- Show recent commits and changed files
-- Support basic git operations (stage, commit, pull, push) from within the TUI
-- Display diff views for modified files
-
-### Automatic Update Checking
-
-- Use git tags and GitHub releases to check for new versions of V.E.G.A.S.
-- Notify the user in the STATS or boot screen when an update is available
-- Support self-update by pulling the latest release binary or rebuilding from source
-
-### Spotify Integration for Radio
-
-- Connect to the Spotify API for real-time playback in the RADIO tab
-- Display currently playing track, artist, and album art (ASCII-rendered)
-- Support playback controls (play, pause, skip, previous, shuffle, repeat)
-- Browse playlists and search for tracks within the TUI
-- Fall back to the existing visual-only radio when Spotify is not connected
 
 ### TV Tab (Anime Streaming via ani-cli)
 
