@@ -123,6 +123,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.radio, cmd = a.radio.Update(msg)
 		return a, cmd
 
+	// Tool messages routed to items regardless of active tab
+	case toolOutputMsg, toolTickMsg:
+		var cmd tea.Cmd
+		a.items, cmd = a.items.Update(msg)
+		return a, cmd
+
 	// Update check result
 	case updateCheckMsg:
 		if msg.err != nil || !msg.hasUpdate {
@@ -286,6 +292,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (a *App) isInputFocused() bool {
 	switch a.activeTab {
+	case TabItems:
+		return a.items.InputFocused()
 	case TabData:
 		return a.data.Focused()
 	case TabQuests:
