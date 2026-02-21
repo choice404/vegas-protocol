@@ -74,7 +74,7 @@ func NewApp() App {
 		data:        NewDataModel(s.ServerURL, s.OllamaModel),
 		quests:      NewQuestsModel(),
 		projects:    NewProjectsModel(s),
-		radio:       NewRadioModel(),
+		radio:       NewRadioModel(s),
 		mapV:        NewMapModel(),
 		settings:    NewSettingsModel(s),
 	}
@@ -90,6 +90,7 @@ func (a *App) enterMain() tea.Cmd {
 		a.stats.Init(),
 		a.data.Init(),
 		a.projects.Init(),
+		a.radio.Init(),
 	)
 }
 
@@ -104,6 +105,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case QuestFromAIMsg:
 		var cmd tea.Cmd
 		a.quests, cmd = a.quests.Update(msg)
+		return a, cmd
+
+	// Spotify messages routed to radio regardless of active tab
+	case radioTickMsg, radioPollingMsg, spotifyStateMsg, spotifyActionMsg, spotifyAuthCompleteMsg, spotifyTokenSavedMsg:
+		var cmd tea.Cmd
+		a.radio, cmd = a.radio.Update(msg)
 		return a, cmd
 
 	// Update check result

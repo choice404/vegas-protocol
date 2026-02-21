@@ -9,10 +9,12 @@ import (
 	"github.com/choice404/vegas-protocol/vegas-tui/internal"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/joho/godotenv"
 	zone "github.com/lrstanley/bubblezone"
 )
 
 func main() {
+	_ = godotenv.Load() // optional .env for SPOTIFY_ID, SPOTIFY_SECRET, etc.
 	zone.NewGlobal()
 
 	p := tea.NewProgram(

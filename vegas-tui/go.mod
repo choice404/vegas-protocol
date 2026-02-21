@@ -12,6 +12,8 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/lrstanley/bubblezone v1.0.0
 	github.com/shirou/gopsutil/v3 v3.24.5
+	github.com/zmb3/spotify/v2 v2.4.3
+	golang.org/x/oauth2 v0.35.0
 )
 
 require (

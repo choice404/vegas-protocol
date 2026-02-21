@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"golang.org/x/oauth2"
 )
 
 const configDirName = "vegas-protocol"
@@ -145,6 +147,34 @@ func DefaultQuests() []QuestLine {
 			},
 		},
 	}
+}
+
+// LoadSpotifyToken reads a saved Spotify OAuth2 token from disk.
+// Returns nil if the file is missing or invalid.
+func LoadSpotifyToken() *oauth2.Token {
+	path := filepath.Join(configPath(), "spotify_token.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var tok oauth2.Token
+	if err := json.Unmarshal(data, &tok); err != nil {
+		return nil
+	}
+	return &tok
+}
+
+// SaveSpotifyToken writes a Spotify OAuth2 token to disk with 0600 permissions.
+func SaveSpotifyToken(tok *oauth2.Token) error {
+	dir := configPath()
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("creating config dir: %w", err)
+	}
+	data, err := json.MarshalIndent(tok, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshalling spotify token: %w", err)
+	}
+	return os.WriteFile(filepath.Join(dir, "spotify_token.json"), data, 0600)
 }
 
 // GenerateQuestID makes a simple ID from a name + timestamp.
