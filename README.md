@@ -4,6 +4,8 @@
 
 A distributed, touch-enabled TUI field assistant inspired by Fallout: New Vegas. Built with Go and the Charmbracelet stack. Designed to run on a Raspberry Pi as a dedicated "Pip-Boy" terminal, connecting to a server running Ollama for local AI inference.
 
+![vegas.gif](./assets/vegas.gif)
+
 ---
 
 ## Table of Contents
@@ -82,7 +84,7 @@ _Coming soon._
 
 Optional:
 
-- **PostgreSQL** (Supabase) for database features
+- **PostgreSQL** (Supabase) for database features (To be implemented)
 - A **Raspberry Pi** with touchscreen for the full Pip-Boy experience
 
 ---
@@ -96,7 +98,7 @@ git clone https://github.com/choice404/vegas-protocol.git
 cd vegas-protocol/vegas-tui
 
 # Build the TUI client
-go build -o vegas-protocol ./cmd/vegas
+go build -o vegas-protocol ./cmd/vegas # can also name `vegas`` to match go install
 
 # Build the server
 go build -o vegas-server ./cmd/vegas-server
@@ -120,7 +122,7 @@ GOOS=linux GOARCH=arm64 go build -o vegas-protocol ./cmd/vegas
 GOOS=linux GOARCH=arm64 go build -o vegas-server ./cmd/vegas-server
 ```
 
-Transfer the binaries to your Pi via `scp` or USB.
+You can also use `go isntall`.
 
 ---
 
@@ -136,7 +138,7 @@ ollama pull llama3.1:8b
 ./vegas-server
 
 # 3. Start the TUI (in another terminal)
-./vegas-protocol
+./vegas
 ```
 
 Press any key after the boot sequence to enter the main interface.
@@ -305,9 +307,4 @@ The following features are planned for future development:
 - Select episodes and launch playback through `ani-cli` using `tea.ExecProcess`
 - Track watch history and maintain a watchlist as part of the quest/config system
 - Display episode metadata and synopsis within the TUI
-
----
-
-## License
-
-MIT
+- Would output to external video player (default is mpv on linux)
