@@ -31,21 +31,27 @@ type ollamaGenerateResponse struct {
 	Response string `json:"response"`
 }
 
+func jsonError(w http.ResponseWriter, message string, code int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(map[string]string{"error": message})
+}
+
 func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	var req chatRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+		jsonError(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
 
 	if req.Prompt == "" {
-		http.Error(w, `{"error":"prompt is required"}`, http.StatusBadRequest)
+		jsonError(w, "prompt is required", http.StatusBadRequest)
 		return
 	}
 
 	model := req.Model
 	if model == "" {
-		model = "llama3"
+		model = "llama3.1:8b"
 	}
 
 	ollamaReq := ollamaGenerateRequest{
@@ -57,32 +63,32 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 
 	body, err := json.Marshal(ollamaReq)
 	if err != nil {
-		http.Error(w, `{"error":"failed to marshal request"}`, http.StatusInternalServerError)
+		jsonError(w, "failed to marshal request", http.StatusInternalServerError)
 		return
 	}
 
 	client := &http.Client{Timeout: 120 * time.Second}
 	resp, err := client.Post(h.OllamaURL+"/api/generate", "application/json", bytes.NewReader(body))
 	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"ollama unreachable: %s"}`, err.Error()), http.StatusBadGateway)
+		jsonError(w, fmt.Sprintf("ollama unreachable: %s", err.Error()), http.StatusBadGateway)
 		return
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		http.Error(w, `{"error":"failed to read ollama response"}`, http.StatusInternalServerError)
+		jsonError(w, "failed to read ollama response", http.StatusInternalServerError)
 		return
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		http.Error(w, fmt.Sprintf(`{"error":"ollama error (%d): %s"}`, resp.StatusCode, string(respBody)), resp.StatusCode)
+		jsonError(w, fmt.Sprintf("ollama error (%d): %s", resp.StatusCode, string(respBody)), resp.StatusCode)
 		return
 	}
 
 	var ollamaResp ollamaGenerateResponse
 	if err := json.Unmarshal(respBody, &ollamaResp); err != nil {
-		http.Error(w, `{"error":"failed to parse ollama response"}`, http.StatusInternalServerError)
+		jsonError(w, "failed to parse ollama response", http.StatusInternalServerError)
 		return
 	}
 

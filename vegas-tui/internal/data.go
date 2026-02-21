@@ -16,6 +16,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	zone "github.com/lrstanley/bubblezone"
 )
 
 type Message struct {
@@ -66,6 +67,28 @@ func (m DataModel) Update(msg tea.Msg) (DataModel, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
+	case tea.MouseMsg:
+		if msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionPress {
+			if zone.Get("data-send").InBounds(msg) {
+				if !m.loading && strings.TrimSpace(m.textInput.Value()) != "" {
+					prompt := m.textInput.Value()
+					m.messages = append(m.messages, Message{Sender: "USER", Content: prompt})
+					m.textInput.Reset()
+					m.loading = true
+					m.updateViewport()
+					cmds = append(cmds, m.sendChat(prompt))
+					return m, tea.Batch(cmds...)
+				}
+			}
+			if zone.Get("data-clear").InBounds(msg) {
+				m.messages = []Message{{
+					Sender:  "V.E.G.A.S.",
+					Content: "Terminal cleared. How can I assist you, Courier?",
+				}}
+				m.updateViewport()
+				return m, nil
+			}
+		}
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "enter":
@@ -161,13 +184,27 @@ func (m *DataModel) updateViewport() {
 
 func (m DataModel) renderMessages() string {
 	var b strings.Builder
+	wrapWidth := m.width - 10
+	if wrapWidth < 20 {
+		wrapWidth = 20
+	}
+	
 	for _, msg := range m.messages {
 		if msg.Sender == "USER" {
 			b.WriteString(theme.AmberStyle.Render(fmt.Sprintf(" > %s: ", msg.Sender)))
-			b.WriteString(theme.BaseStyle.Render(msg.Content))
+			wrapped := wrapText(msg.Content, wrapWidth)
+			lines := strings.Split(wrapped, "\n")
+			for i, line := range lines {
+				if i == 0 {
+					b.WriteString(theme.BaseStyle.Render(line))
+				} else {
+					b.WriteString("\n   ")
+					b.WriteString(theme.BaseStyle.Render(line))
+				}
+			}
 		} else {
 			b.WriteString(theme.BoldStyle.Render(fmt.Sprintf(" > %s: ", msg.Sender)))
-			wrapped := wrapText(msg.Content, m.width-6)
+			wrapped := wrapText(msg.Content, wrapWidth)
 			lines := strings.Split(wrapped, "\n")
 			for i, line := range lines {
 				if i == 0 {
@@ -187,7 +224,7 @@ func (m DataModel) renderMessages() string {
 	return b.String()
 }
 
-func (m DataModel) View(width, height int) string {
+func (m *DataModel) View(width, height int) string {
 	var b strings.Builder
 
 	b.WriteString(theme.TitleStyle.Render(" V.E.G.A.S. TERMINAL "))
@@ -199,10 +236,9 @@ func (m DataModel) View(width, height int) string {
 	}
 	if width != m.width || height != m.height {
 		m.viewport = viewport.New(width-4, vpHeight)
-		m.viewport.SetContent(m.renderMessages())
-		m.viewport.GotoBottom()
 		m.width = width
 		m.height = height
+		m.updateViewport()
 	}
 
 	b.WriteString(m.viewport.View())
@@ -215,9 +251,11 @@ func (m DataModel) View(width, height int) string {
 	b.WriteString(theme.DimStyle.Render(strings.Repeat("─", divWidth)))
 	b.WriteString("\n")
 
-	prompt := theme.AmberStyle.Render(" > ")
-	b.WriteString(prompt)
 	b.WriteString(m.textInput.View())
+	b.WriteString("  ")
+	b.WriteString(zone.Mark("data-send", theme.AmberStyle.Render("[ SEND ]")))
+	b.WriteString("  ")
+	b.WriteString(zone.Mark("data-clear", theme.BaseStyle.Render("[ CLEAR ]")))
 
 	return b.String()
 }
@@ -289,12 +327,19 @@ func (m DataModel) sendChat(prompt string) tea.Cmd {
 		}
 
 		if resp.StatusCode != http.StatusOK {
-			return chatResponseMsg{err: fmt.Errorf("server error (%d)", resp.StatusCode)}
+			// Try to parse JSON error from server
+			var errResp struct {
+				Error string `json:"error"`
+			}
+			if json.Unmarshal(respBody, &errResp) == nil && errResp.Error != "" {
+				return chatResponseMsg{err: fmt.Errorf("%s", errResp.Error)}
+			}
+			return chatResponseMsg{err: fmt.Errorf("server error (%d): %s", resp.StatusCode, string(respBody))}
 		}
 
 		var ollamaResp ollamaResponse
 		if err := json.Unmarshal(respBody, &ollamaResp); err != nil {
-			return chatResponseMsg{err: fmt.Errorf("failed to parse response")}
+			return chatResponseMsg{err: fmt.Errorf("failed to parse response: %s", string(respBody))}
 		}
 
 		return chatResponseMsg{content: ollamaResp.Response}

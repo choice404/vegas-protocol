@@ -21,7 +21,8 @@ type Config struct {
 }
 
 func Load() (*Config, error) {
-	// .env is optional — production uses real env vars
+	// NOTE: .env is optional
+	// production uses real env vars
 	_ = godotenv.Load()
 
 	cfg := &Config{
@@ -40,10 +41,11 @@ func Load() (*Config, error) {
 		cfg.OllamaURL = "http://localhost:11434"
 	}
 
-	// Database is optional — server runs in chat-only mode without it
+	// NOTE: Database is optional
+	// server runs in chat-only mode without it
 	cfg.HasDatabase = cfg.DatabaseURL != ""
 
-	// Supabase auth is optional
+	// NOTE: Supabase auth is optional
 	cfg.HasSupabase = cfg.SupabaseURL != "" && cfg.SupabaseAnonKey != "" && cfg.SupabaseJWTSecret != ""
 
 	if !cfg.HasDatabase {

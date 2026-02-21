@@ -180,6 +180,41 @@ func (m QuestsModel) Update(msg tea.Msg) (QuestsModel, tea.Cmd) {
 
 	case tea.MouseMsg:
 		if msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionPress {
+			// Button clicks
+			if zone.Get("quest-new").InBounds(msg) {
+				m.focus = focusAddQuest
+				m.input.Placeholder = "New questline name..."
+				m.input.Focus()
+				return m, textinput.Blink
+			}
+			if zone.Get("quest-add-task").InBounds(msg) && m.focus == focusTaskList && m.questCursor < len(m.quests) {
+				m.focus = focusAddTask
+				m.input.Placeholder = "New task name..."
+				m.input.Focus()
+				return m, textinput.Blink
+			}
+			if zone.Get("quest-delete").InBounds(msg) {
+				if m.focus == focusTaskList && m.questCursor < len(m.quests) {
+					q := &m.quests[m.questCursor]
+					if m.taskCursor < len(q.Tasks) {
+						q.Tasks = append(q.Tasks[:m.taskCursor], q.Tasks[m.taskCursor+1:]...)
+						if m.taskCursor >= len(q.Tasks) && m.taskCursor > 0 {
+							m.taskCursor--
+						}
+						return m, m.saveQuests()
+					}
+				} else if m.focus == focusQuestList && m.questCursor < len(m.quests) {
+					m.quests = append(m.quests[:m.questCursor], m.quests[m.questCursor+1:]...)
+					if m.questCursor >= len(m.quests) && m.questCursor > 0 {
+						m.questCursor--
+					}
+					return m, m.saveQuests()
+				}
+			}
+			if zone.Get("quest-back").InBounds(msg) && m.focus == focusTaskList {
+				m.focus = focusQuestList
+				return m, nil
+			}
 			for i := range m.quests {
 				if zone.Get(fmt.Sprintf("ql-%d", i)).InBounds(msg) {
 					m.questCursor = i
@@ -361,8 +396,23 @@ func (m QuestsModel) View(width, height int) string {
 		b.WriteString("\n")
 	}
 
+	// Buttons
+	b.WriteString("\n  ")
+	b.WriteString(zone.Mark("quest-new", theme.AmberStyle.Render("[ NEW QUEST ]")))
+	if m.focus == focusTaskList && m.questCursor < len(m.quests) {
+		b.WriteString("  ")
+		b.WriteString(zone.Mark("quest-add-task", theme.BaseStyle.Render("[ ADD TASK ]")))
+		b.WriteString("  ")
+		b.WriteString(zone.Mark("quest-delete", theme.RedStyle.Render("[ DELETE ]")))
+		b.WriteString("  ")
+		b.WriteString(zone.Mark("quest-back", theme.DimStyle.Render("[ BACK ]")))
+	} else if m.focus == focusQuestList && len(m.quests) > 0 {
+		b.WriteString("  ")
+		b.WriteString(zone.Mark("quest-delete", theme.RedStyle.Render("[ DELETE ]")))
+	}
+
 	// Help
-	b.WriteString("\n")
+	b.WriteString("\n\n")
 	if m.focus == focusQuestList {
 		b.WriteString(theme.DimStyle.Render("  [j/k] Navigate  [Enter] View Tasks  [A] New Quest  [d] Delete"))
 	} else if m.focus == focusTaskList {

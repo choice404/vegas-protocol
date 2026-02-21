@@ -24,7 +24,8 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool) *chi.Mux {
 	// Always available
 	r.Post("/api/chat", chat.Chat)
 
-	// Health check — works with or without DB
+	// NOTE: Health check
+	// works with or without DB
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if pool != nil {
@@ -39,7 +40,8 @@ func NewRouter(cfg *config.Config, pool *pgxpool.Pool) *chi.Mux {
 		}
 	})
 
-	// Auth + protected routes — only if Supabase is configured
+	// NOTE: Auth + protected routes
+	// only if Supabase is configured
 	if cfg.HasSupabase {
 		auth := &handlers.AuthHandler{
 			SupabaseURL:     cfg.SupabaseURL,

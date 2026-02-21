@@ -152,6 +152,24 @@ func (m SettingsModel) Update(msg tea.Msg) (SettingsModel, tea.Cmd) {
 
 	case tea.MouseMsg:
 		if msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionPress {
+			if zone.Get("set-save").InBounds(msg) && m.dirty {
+				s := m.appSettings
+				return m, func() tea.Msg {
+					_ = settings.Save(s)
+					return settingsSavedMsg{}
+				}
+			}
+			if zone.Get("set-reset").InBounds(msg) {
+				defaults := settings.DefaultSettings()
+				m.appSettings.Editor = defaults.Editor
+				m.appSettings.ServerURL = defaults.ServerURL
+				m.appSettings.OllamaURL = defaults.OllamaURL
+				m.appSettings.OllamaModel = defaults.OllamaModel
+				m.appSettings.Theme = defaults.Theme
+				m.dirty = true
+				m.refreshEntries()
+				return m, nil
+			}
 			for i := range m.entries {
 				if zone.Get(fmt.Sprintf("set-%d", i)).InBounds(msg) {
 					m.cursor = i
@@ -222,7 +240,15 @@ func (m SettingsModel) View(width, height int) string {
 		}
 	}
 
-	b.WriteString("\n")
+	// Buttons
+	b.WriteString("\n  ")
+	if m.dirty {
+		b.WriteString(zone.Mark("set-save", theme.AmberStyle.Render("[ SAVE ]")))
+		b.WriteString("  ")
+	}
+	b.WriteString(zone.Mark("set-reset", theme.BaseStyle.Render("[ RESET DEFAULTS ]")))
+
+	b.WriteString("\n\n")
 	if m.editing {
 		b.WriteString(theme.DimStyle.Render("  [Enter] Save value  [Esc] Cancel"))
 	} else {

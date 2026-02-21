@@ -8,6 +8,7 @@ import (
 	"rebel-hacks-tui/internal/theme"
 
 	tea "github.com/charmbracelet/bubbletea"
+	zone "github.com/lrstanley/bubblezone"
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/disk"
 	"github.com/shirou/gopsutil/v3/host"
@@ -108,6 +109,12 @@ func fetchStats() tea.Msg {
 
 func (m StatsModel) Update(msg tea.Msg) (StatsModel, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.MouseMsg:
+		if msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionPress {
+			if zone.Get("stats-refresh").InBounds(msg) {
+				return m, fetchStats
+			}
+		}
 	case statsTickMsg:
 		return m, tea.Batch(fetchStats, statsTickCmd())
 	case statsDataMsg:
@@ -189,6 +196,10 @@ func (m StatsModel) View(width, height int) string {
 		theme.GaugeLabel.Render("UPTIME:"),
 		theme.BaseStyle.Render(formatUptime(m.uptime)),
 	))
+
+	b.WriteString("\n")
+	b.WriteString("  ")
+	b.WriteString(zone.Mark("stats-refresh", theme.BaseStyle.Render("[ REFRESH ]")))
 
 	return b.String()
 }

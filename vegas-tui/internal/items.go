@@ -122,6 +122,14 @@ func (m ItemsModel) Update(msg tea.Msg) (ItemsModel, tea.Cmd) {
 		}
 	case tea.MouseMsg:
 		if msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionPress {
+			if zone.Get("items-inspect").InBounds(msg) {
+				m.selected = m.cursor
+				return m, nil
+			}
+			if zone.Get("items-close").InBounds(msg) {
+				m.selected = -1
+				return m, nil
+			}
 			for i := range m.items {
 				if zone.Get(fmt.Sprintf("item-%d", i)).InBounds(msg) {
 					m.cursor = i
@@ -202,6 +210,13 @@ func (m ItemsModel) View(width, height int) string {
 	}
 
 	b.WriteString("\n")
+	b.WriteString("  ")
+	if m.selected >= 0 {
+		b.WriteString(zone.Mark("items-close", theme.BaseStyle.Render("[ CLOSE ]")))
+	} else if m.cursor >= 0 && m.cursor < len(m.items) {
+		b.WriteString(zone.Mark("items-inspect", theme.AmberStyle.Render("[ INSPECT ]")))
+	}
+	b.WriteString("\n\n")
 	b.WriteString(theme.DimStyle.Render(" [j/k] Navigate  [Enter/Click] Inspect"))
 
 	return b.String()

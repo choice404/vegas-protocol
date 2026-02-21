@@ -58,7 +58,7 @@ func DefaultSettings() *Settings {
 		Editor:      detectEditor(),
 		ServerURL:   "http://localhost:8080",
 		OllamaURL:   "http://localhost:11434",
-		OllamaModel: "llama3",
+		OllamaModel: "llama3.1:8b",
 		Theme:       "green",
 		ProjectDirs: []string{},
 	}

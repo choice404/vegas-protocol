@@ -23,6 +23,8 @@ const (
 	focusProjectList
 	focusFileList
 	focusSearching
+	focusGitStatus
+	focusCommitMsg
 )
 
 type editorDoneMsg struct{ err error }
@@ -49,6 +51,13 @@ type ProjectsModel struct {
 	dirInput      textinput.Model
 	searchFilter  string
 	currentDir    string // Currently browsed project directory
+
+	// Git integration
+	gitStatus   GitStatus
+	gitLoading  bool
+	gitFeedback string
+	commitInput textinput.Model
+	projectRoot string // Root path of the currently open project
 }
 
 func NewProjectsModel(s *settings.Settings) ProjectsModel {
@@ -62,10 +71,16 @@ func NewProjectsModel(s *settings.Settings) ProjectsModel {
 	dirTI.CharLimit = 200
 	dirTI.Width = 50
 
+	commitTI := textinput.New()
+	commitTI.Placeholder = "Enter commit message..."
+	commitTI.CharLimit = 200
+	commitTI.Width = 50
+
 	m := ProjectsModel{
 		appSettings: s,
 		search:      searchTI,
 		dirInput:    dirTI,
+		commitInput: commitTI,
 	}
 
 	if len(s.ProjectDirs) > 0 {
@@ -150,11 +165,75 @@ func (m ProjectsModel) Init() tea.Cmd {
 	return nil
 }
 
+func (m *ProjectsModel) enterProject(path string) tea.Cmd {
+	m.loadFiles(path)
+	m.projectRoot = path
+	m.focus = focusFileList
+	m.fileCursor = 0
+	m.gitStatus = GitStatus{}
+	m.gitFeedback = ""
+	return fetchGitStatus(path)
+}
+
 func (m ProjectsModel) Update(msg tea.Msg) (ProjectsModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case editorDoneMsg:
-		// Editor closed, return to file view
 		return m, nil
+
+	// Git message handlers
+	case gitStatusMsg:
+		m.gitLoading = false
+		if msg.err != nil {
+			m.gitFeedback = "STATUS ERROR: " + msg.err.Error()
+		}
+		m.gitStatus = msg.status
+		return m, nil
+
+	case gitStageMsg:
+		m.gitLoading = false
+		if msg.err != nil {
+			m.gitFeedback = "STAGE FAILED: " + msg.err.Error()
+		} else {
+			m.gitFeedback = "STAGED ALL CHANGES"
+		}
+		return m, fetchGitStatus(m.projectRoot)
+
+	case gitCommitMsg:
+		m.gitLoading = false
+		if msg.err != nil {
+			m.gitFeedback = "COMMIT FAILED: " + msg.err.Error()
+		} else {
+			m.gitFeedback = "COMMITTED"
+		}
+		return m, fetchGitStatus(m.projectRoot)
+
+	case gitPushMsg:
+		m.gitLoading = false
+		if msg.err != nil {
+			m.gitFeedback = "PUSH FAILED: " + msg.err.Error()
+		} else {
+			m.gitFeedback = "PUSHED"
+		}
+		return m, fetchGitStatus(m.projectRoot)
+
+	case gitPullMsg:
+		m.gitLoading = false
+		if msg.err != nil {
+			m.gitFeedback = "PULL FAILED: " + msg.err.Error()
+		} else {
+			m.gitFeedback = "PULLED"
+			m.loadFiles(m.currentDir)
+		}
+		return m, fetchGitStatus(m.projectRoot)
+
+	case gitFetchMsg:
+		m.gitLoading = false
+		if msg.err != nil {
+			m.gitFeedback = "FETCH FAILED: " + msg.err.Error()
+		} else {
+			m.gitFeedback = "FETCHED"
+		}
+		return m, fetchGitStatus(m.projectRoot)
 
 	case tea.KeyMsg:
 		// Setup directory input
@@ -163,7 +242,6 @@ func (m ProjectsModel) Update(msg tea.Msg) (ProjectsModel, tea.Cmd) {
 			case "enter":
 				dir := strings.TrimSpace(m.dirInput.Value())
 				if dir != "" {
-					// Expand ~ to home dir
 					if strings.HasPrefix(dir, "~") {
 						home, _ := os.UserHomeDir()
 						dir = filepath.Join(home, dir[1:])
@@ -207,6 +285,80 @@ func (m ProjectsModel) Update(msg tea.Msg) (ProjectsModel, tea.Cmd) {
 			return m, cmd
 		}
 
+		// Commit message input
+		if m.focus == focusCommitMsg {
+			switch msg.String() {
+			case "enter":
+				message := strings.TrimSpace(m.commitInput.Value())
+				if message != "" {
+					m.gitLoading = true
+					m.gitFeedback = "COMMITTING..."
+					m.commitInput.Reset()
+					m.commitInput.Blur()
+					m.focus = focusGitStatus
+					return m, gitCommit(m.projectRoot, message)
+				}
+				return m, nil
+			case "esc":
+				m.commitInput.Reset()
+				m.commitInput.Blur()
+				m.focus = focusGitStatus
+				return m, nil
+			}
+			var cmd tea.Cmd
+			m.commitInput, cmd = m.commitInput.Update(msg)
+			return m, cmd
+		}
+
+		// Git status view
+		if m.focus == focusGitStatus {
+			if !m.gitLoading {
+				switch msg.String() {
+				case "s":
+					m.gitLoading = true
+					m.gitFeedback = "STAGING..."
+					return m, gitStageAll(m.projectRoot)
+				case "c":
+					if len(m.gitStatus.Staged) > 0 {
+						m.focus = focusCommitMsg
+						m.commitInput.Focus()
+						return m, textinput.Blink
+					}
+					m.gitFeedback = "NOTHING STAGED TO COMMIT"
+					return m, nil
+				case "p":
+					if m.gitStatus.HasRemote {
+						m.gitLoading = true
+						m.gitFeedback = "PUSHING..."
+						return m, gitPush(m.projectRoot)
+					}
+					m.gitFeedback = "NO REMOTE CONFIGURED"
+					return m, nil
+				case "l":
+					if m.gitStatus.HasRemote {
+						m.gitLoading = true
+						m.gitFeedback = "PULLING..."
+						return m, gitPull(m.projectRoot)
+					}
+					m.gitFeedback = "NO REMOTE CONFIGURED"
+					return m, nil
+				case "f":
+					if m.gitStatus.HasRemote {
+						m.gitLoading = true
+						m.gitFeedback = "FETCHING..."
+						return m, gitFetch(m.projectRoot)
+					}
+					m.gitFeedback = "NO REMOTE CONFIGURED"
+					return m, nil
+				case "esc":
+					m.focus = focusFileList
+					m.gitFeedback = ""
+					return m, nil
+				}
+			}
+			return m, nil
+		}
+
 		// Project or file list navigation
 		switch msg.String() {
 		case "/":
@@ -240,9 +392,8 @@ func (m ProjectsModel) Update(msg tea.Msg) (ProjectsModel, tea.Cmd) {
 			if m.focus == focusProjectList {
 				filtered := m.filteredProjects()
 				if m.projectCursor < len(filtered) {
-					m.loadFiles(filtered[m.projectCursor].Path)
-					m.focus = focusFileList
-					m.fileCursor = 0
+					cmd := m.enterProject(filtered[m.projectCursor].Path)
+					return m, cmd
 				}
 			} else if m.focus == focusFileList && m.fileCursor < len(m.files) {
 				f := m.files[m.fileCursor]
@@ -252,7 +403,6 @@ func (m ProjectsModel) Update(msg tea.Msg) (ProjectsModel, tea.Cmd) {
 				}
 			}
 		case "e":
-			// Open file in editor
 			if m.focus == focusFileList && m.fileCursor < len(m.files) {
 				f := m.files[m.fileCursor]
 				if !f.IsDir {
@@ -263,9 +413,14 @@ func (m ProjectsModel) Update(msg tea.Msg) (ProjectsModel, tea.Cmd) {
 					})
 				}
 			}
+		case "g":
+			if m.focus == focusFileList && m.gitStatus.IsRepo {
+				m.focus = focusGitStatus
+				m.gitFeedback = ""
+				return m, fetchGitStatus(m.projectRoot)
+			}
 		case "esc", "backspace":
 			if m.focus == focusFileList {
-				// Go up a directory or back to project list
 				parent := filepath.Dir(m.currentDir)
 				isProjectRoot := false
 				for _, p := range m.projects {
@@ -277,6 +432,7 @@ func (m ProjectsModel) Update(msg tea.Msg) (ProjectsModel, tea.Cmd) {
 				if isProjectRoot {
 					m.focus = focusProjectList
 					m.files = nil
+					m.gitStatus = GitStatus{}
 				} else {
 					m.loadFiles(parent)
 					m.fileCursor = 0
@@ -286,7 +442,6 @@ func (m ProjectsModel) Update(msg tea.Msg) (ProjectsModel, tea.Cmd) {
 				m.search.Reset()
 			}
 		case "P":
-			// Add another project directory
 			m.focus = focusSetupDir
 			m.dirInput.Focus()
 			return m, textinput.Blink
@@ -294,15 +449,113 @@ func (m ProjectsModel) Update(msg tea.Msg) (ProjectsModel, tea.Cmd) {
 
 	case tea.MouseMsg:
 		if msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionPress {
+			// Button clicks
+			if zone.Get("proj-add-dir").InBounds(msg) {
+				m.focus = focusSetupDir
+				m.dirInput.Focus()
+				return m, textinput.Blink
+			}
+			if zone.Get("proj-search").InBounds(msg) && m.focus == focusProjectList {
+				m.focus = focusSearching
+				m.search.Focus()
+				return m, textinput.Blink
+			}
+			if zone.Get("proj-back").InBounds(msg) {
+				if m.focus == focusGitStatus {
+					m.focus = focusFileList
+					m.gitFeedback = ""
+					return m, nil
+				}
+				if m.focus == focusFileList {
+					parent := filepath.Dir(m.currentDir)
+					isProjectRoot := false
+					for _, p := range m.projects {
+						if p.Path == m.currentDir {
+							isProjectRoot = true
+							break
+						}
+					}
+					if isProjectRoot {
+						m.focus = focusProjectList
+						m.files = nil
+						m.gitStatus = GitStatus{}
+					} else {
+						m.loadFiles(parent)
+						m.fileCursor = 0
+					}
+					return m, nil
+				}
+			}
+			if zone.Get("proj-edit").InBounds(msg) && m.focus == focusFileList && m.fileCursor < len(m.files) {
+				f := m.files[m.fileCursor]
+				if !f.IsDir {
+					editor := m.appSettings.Editor
+					c := exec.Command(editor, f.Path)
+					return m, tea.ExecProcess(c, func(err error) tea.Msg {
+						return editorDoneMsg{err}
+					})
+				}
+			}
+
+			// Git button: open git status view
+			if zone.Get("proj-git").InBounds(msg) && m.focus == focusFileList && m.gitStatus.IsRepo {
+				m.focus = focusGitStatus
+				m.gitFeedback = ""
+				return m, fetchGitStatus(m.projectRoot)
+			}
+
+			// Git action buttons (only in git status view)
+			if m.focus == focusGitStatus && !m.gitLoading {
+				if zone.Get("proj-stage-all").InBounds(msg) {
+					m.gitLoading = true
+					m.gitFeedback = "STAGING..."
+					return m, gitStageAll(m.projectRoot)
+				}
+				if zone.Get("proj-commit").InBounds(msg) {
+					if len(m.gitStatus.Staged) > 0 {
+						m.focus = focusCommitMsg
+						m.commitInput.Focus()
+						return m, textinput.Blink
+					}
+					m.gitFeedback = "NOTHING STAGED TO COMMIT"
+					return m, nil
+				}
+				if zone.Get("proj-push").InBounds(msg) {
+					if m.gitStatus.HasRemote {
+						m.gitLoading = true
+						m.gitFeedback = "PUSHING..."
+						return m, gitPush(m.projectRoot)
+					}
+					m.gitFeedback = "NO REMOTE CONFIGURED"
+					return m, nil
+				}
+				if zone.Get("proj-pull").InBounds(msg) {
+					if m.gitStatus.HasRemote {
+						m.gitLoading = true
+						m.gitFeedback = "PULLING..."
+						return m, gitPull(m.projectRoot)
+					}
+					m.gitFeedback = "NO REMOTE CONFIGURED"
+					return m, nil
+				}
+				if zone.Get("proj-fetch").InBounds(msg) {
+					if m.gitStatus.HasRemote {
+						m.gitLoading = true
+						m.gitFeedback = "FETCHING..."
+						return m, gitFetch(m.projectRoot)
+					}
+					m.gitFeedback = "NO REMOTE CONFIGURED"
+					return m, nil
+				}
+			}
+
 			if m.focus == focusProjectList {
 				filtered := m.filteredProjects()
 				for i := range filtered {
 					if zone.Get(fmt.Sprintf("proj-%d", i)).InBounds(msg) {
 						m.projectCursor = i
-						m.loadFiles(filtered[i].Path)
-						m.focus = focusFileList
-						m.fileCursor = 0
-						return m, nil
+						cmd := m.enterProject(filtered[i].Path)
+						return m, cmd
 					}
 				}
 			} else if m.focus == focusFileList {
@@ -405,23 +658,129 @@ func (m ProjectsModel) View(width, height int) string {
 			b.WriteString("\n")
 		}
 
-		b.WriteString("\n")
+		b.WriteString("\n  ")
+		b.WriteString(zone.Mark("proj-search", theme.AmberStyle.Render("[ SEARCH ]")))
+		b.WriteString("  ")
+		b.WriteString(zone.Mark("proj-add-dir", theme.BaseStyle.Render("[ ADD DIR ]")))
+		b.WriteString("\n\n")
 		b.WriteString(theme.DimStyle.Render("  [j/k] Navigate  [Enter] Open  [/] Search  [P] Add Dir"))
+	}
+
+	if m.focus == focusGitStatus || m.focus == focusCommitMsg {
+		b.WriteString(fmt.Sprintf("  %s %s\n",
+			theme.DimStyle.Render("PROJECT:"),
+			theme.BaseStyle.Render(m.projectRoot),
+		))
+		b.WriteString(fmt.Sprintf("  %s %s\n\n",
+			theme.DimStyle.Render("BRANCH:"),
+			theme.AmberStyle.Render(m.gitStatus.Branch),
+		))
+
+		// Staged files
+		if len(m.gitStatus.Staged) > 0 {
+			b.WriteString(theme.BaseStyle.Render("  STAGED:"))
+			b.WriteString("\n")
+			for _, f := range m.gitStatus.Staged {
+				b.WriteString(fmt.Sprintf("    %s %s\n", theme.BaseStyle.Render("+"), theme.BaseStyle.Render(f)))
+			}
+			b.WriteString("\n")
+		}
+
+		// Unstaged (modified) files
+		if len(m.gitStatus.Unstaged) > 0 {
+			b.WriteString(theme.AmberStyle.Render("  MODIFIED:"))
+			b.WriteString("\n")
+			for _, f := range m.gitStatus.Unstaged {
+				b.WriteString(fmt.Sprintf("    %s %s\n", theme.AmberStyle.Render("~"), theme.AmberStyle.Render(f)))
+			}
+			b.WriteString("\n")
+		}
+
+		// Untracked files
+		if len(m.gitStatus.Untracked) > 0 {
+			b.WriteString(theme.DimStyle.Render("  UNTRACKED:"))
+			b.WriteString("\n")
+			for _, f := range m.gitStatus.Untracked {
+				b.WriteString(fmt.Sprintf("    %s %s\n", theme.DimStyle.Render("?"), theme.DimStyle.Render(f)))
+			}
+			b.WriteString("\n")
+		}
+
+		if m.gitStatus.Clean {
+			b.WriteString(theme.BaseStyle.Render("  WORKING TREE CLEAN"))
+			b.WriteString("\n\n")
+		}
+
+		// Commit message input
+		if m.focus == focusCommitMsg {
+			b.WriteString("  " + theme.AmberStyle.Render("COMMIT MSG: ") + m.commitInput.View())
+			b.WriteString("\n\n")
+		}
+
+		// Feedback line
+		if m.gitFeedback != "" {
+			style := theme.BaseStyle
+			if strings.Contains(m.gitFeedback, "FAILED") || strings.Contains(m.gitFeedback, "ERROR") || strings.Contains(m.gitFeedback, "NO ") || strings.Contains(m.gitFeedback, "NOTHING") {
+				style = theme.RedStyle
+			} else if strings.Contains(m.gitFeedback, "...") {
+				style = theme.AmberStyle
+			}
+			b.WriteString("  " + style.Render(m.gitFeedback))
+			b.WriteString("\n\n")
+		}
+
+		// Buttons
+		b.WriteString("  ")
+		b.WriteString(zone.Mark("proj-stage-all", theme.AmberStyle.Render("[ STAGE ALL ]")))
+		b.WriteString("  ")
+		b.WriteString(zone.Mark("proj-commit", theme.AmberStyle.Render("[ COMMIT ]")))
+		b.WriteString("  ")
+		b.WriteString(zone.Mark("proj-push", theme.BaseStyle.Render("[ PUSH ]")))
+		b.WriteString("  ")
+		b.WriteString(zone.Mark("proj-pull", theme.BaseStyle.Render("[ PULL ]")))
+		b.WriteString("  ")
+		b.WriteString(zone.Mark("proj-fetch", theme.BaseStyle.Render("[ FETCH ]")))
+		b.WriteString("  ")
+		b.WriteString(zone.Mark("proj-back", theme.DimStyle.Render("[ BACK ]")))
+		b.WriteString("\n\n")
+
+		if m.focus == focusCommitMsg {
+			b.WriteString(theme.DimStyle.Render("  [Enter] Commit  [Esc] Cancel"))
+		} else {
+			b.WriteString(theme.DimStyle.Render("  [s] Stage All  [c] Commit  [p] Push  [l] Pull  [f] Fetch  [Esc] Back"))
+		}
 	}
 
 	if m.focus == focusFileList {
 		// Show breadcrumb
-		b.WriteString(fmt.Sprintf("  %s %s\n\n",
+		b.WriteString(fmt.Sprintf("  %s %s\n",
 			theme.DimStyle.Render("PATH:"),
 			theme.BaseStyle.Render(m.currentDir),
 		))
+
+		// Git status line
+		if m.gitStatus.IsRepo {
+			changeCount := len(m.gitStatus.Staged) + len(m.gitStatus.Unstaged) + len(m.gitStatus.Untracked)
+			gitLine := fmt.Sprintf("  %s %s", theme.DimStyle.Render("GIT:"), theme.AmberStyle.Render(m.gitStatus.Branch))
+			if m.gitStatus.Clean {
+				gitLine += "  " + theme.BaseStyle.Render("CLEAN")
+			} else {
+				gitLine += fmt.Sprintf("  %s", theme.AmberStyle.Render(fmt.Sprintf("%d CHANGES", changeCount)))
+			}
+			if m.gitStatus.HasRemote && (m.gitStatus.Ahead > 0 || m.gitStatus.Behind > 0) {
+				gitLine += fmt.Sprintf("  %s", theme.DimStyle.Render(fmt.Sprintf("[+%d/-%d]", m.gitStatus.Ahead, m.gitStatus.Behind)))
+			}
+			b.WriteString(gitLine)
+			b.WriteString("\n")
+		}
+		b.WriteString("\n")
 
 		if len(m.files) == 0 {
 			b.WriteString(theme.DimStyle.Render("  Empty directory."))
 			b.WriteString("\n")
 		}
 
-		maxShow := height - 12
+		maxShow := height - 14
 		if maxShow < 5 {
 			maxShow = 5
 		}
@@ -458,13 +817,25 @@ func (m ProjectsModel) View(width, height int) string {
 			b.WriteString("\n")
 		}
 
-		b.WriteString("\n")
-		b.WriteString(theme.DimStyle.Render("  [j/k] Navigate  [Enter] Open Dir  [e] Edit File  [Esc] Back"))
+		b.WriteString("\n  ")
+		b.WriteString(zone.Mark("proj-edit", theme.AmberStyle.Render("[ EDIT ]")))
+		b.WriteString("  ")
+		if m.gitStatus.IsRepo {
+			b.WriteString(zone.Mark("proj-git", theme.BaseStyle.Render("[ GIT ]")))
+			b.WriteString("  ")
+		}
+		b.WriteString(zone.Mark("proj-back", theme.BaseStyle.Render("[ BACK ]")))
+		b.WriteString("\n\n")
+		if m.gitStatus.IsRepo {
+			b.WriteString(theme.DimStyle.Render("  [j/k] Navigate  [Enter] Open Dir  [e] Edit File  [g] Git  [Esc] Back"))
+		} else {
+			b.WriteString(theme.DimStyle.Render("  [j/k] Navigate  [Enter] Open Dir  [e] Edit File  [Esc] Back"))
+		}
 	}
 
 	return b.String()
 }
 
 func (m ProjectsModel) InputFocused() bool {
-	return m.focus == focusSetupDir || m.focus == focusSearching
+	return m.focus == focusSetupDir || m.focus == focusSearching || m.focus == focusCommitMsg
 }

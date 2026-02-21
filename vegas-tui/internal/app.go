@@ -29,9 +29,10 @@ const (
 	TabRadio    = 5
 	TabMap      = 6
 	TabSettings = 7
+	TabExit= 8
 )
 
-var tabNames = []string{"STATS", "ITEMS", "DATA", "QUESTS", "PROJ", "RADIO", "MAP", "SET"}
+var tabNames = []string{"STATS", "ITEMS", "DATA", "QUESTS", "PROJ", "RADIO", "MAP", "SET", "EXIT"}
 
 type App struct {
 	state     AppState
@@ -150,6 +151,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "8":
 			a.switchTab(TabSettings)
 			return a, nil
+		case "9":
+			return a, tea.Quit
 		}
 
 	case tea.MouseMsg:
@@ -220,6 +223,8 @@ func (a *App) updateActiveTab(msg tea.Msg) tea.Cmd {
 		a.mapV, cmd = a.mapV.Update(msg)
 	case TabSettings:
 		a.settings, cmd = a.settings.Update(msg)
+	case TabExit:
+		return tea.Quit
 	}
 	return cmd
 }
