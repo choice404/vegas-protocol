@@ -269,7 +269,7 @@ func (a App) View() string {
 }
 
 func (a App) renderHeader() string {
-	title := theme.BoldStyle.Render(" V.E.G.A.S. PROTOCOL v1.0.0 ")
+	title := theme.BoldStyle.Render(" V.E.G.A.S. PROTOCOL v0.0.2 ")
 	padding := a.width - lipgloss.Width(title) - 2
 	if padding < 0 {
 		padding = 0
