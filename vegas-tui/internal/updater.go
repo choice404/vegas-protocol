@@ -12,7 +12,7 @@ import (
 )
 
 // Version is the current application version. Update this on each release.
-const Version = "0.1.2"
+const Version = "0.1.3"
 
 // RestartAfterUpdate is set to true when an update completes successfully.
 // main() checks this after the TUI exits to re-exec the new binary.
