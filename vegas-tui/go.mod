@@ -1,4 +1,4 @@
-module rebel-hacks-tui
+module github.com/choice404/vegas-protocol/vegas-tui
 
 go 1.25.6
 

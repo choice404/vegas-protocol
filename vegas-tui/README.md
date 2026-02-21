@@ -90,7 +90,7 @@ Optional:
 ### From Source
 
 ```bash
-git clone https://github.com/austin-choi/vegas-protocol.git
+git clone https://github.com/choice404/vegas-protocol.git
 cd vegas-protocol/vegas-tui
 
 # Build the TUI client
@@ -104,10 +104,10 @@ go build -o vegas-server ./cmd/server
 
 ```bash
 # Install the TUI client
-go install github.com/austin-choi/vegas-protocol/vegas-tui/cmd/tui@latest
+go install github.com/choice404/vegas-protocol/vegas-tui/cmd/tui@latest
 
 # Install the server
-go install github.com/austin-choi/vegas-protocol/vegas-tui/cmd/server@latest
+go install github.com/choice404/vegas-protocol/vegas-tui/cmd/server@latest
 ```
 
 ### Cross-Compile for Raspberry Pi
