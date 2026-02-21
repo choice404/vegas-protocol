@@ -57,7 +57,8 @@ type App struct {
 	appSettings *settings.Settings
 
 	// Update check
-	updateVersion string // tag of the available update (e.g. "v0.1.0")
+	updateTag     string // raw GitHub tag (e.g. "vegas-tui/v0.1.0")
+	updateVersion string // clean display version (e.g. "v0.1.0")
 	updateError   string // error message if check/update failed
 }
 
@@ -113,11 +114,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, cmd
 		}
 		// Update available
-		a.updateVersion = msg.release.TagName
+		a.updateTag = msg.release.TagName
+		a.updateVersion = strings.TrimPrefix(msg.release.TagName, "vegas-tui/")
 		if a.appSettings.AutoUpdate {
 			// Auto-update without prompting
 			a.state = StateUpdateCheck
-			return a, doUpdateCmd(a.updateVersion)
+			return a, doUpdateCmd(a.updateTag)
 		}
 		// Prompt user
 		a.state = StateUpdatePrompt
@@ -161,7 +163,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch msg.String() {
 			case "y", "Y":
 				a.state = StateUpdateCheck
-				return a, doUpdateCmd(a.updateVersion)
+				return a, doUpdateCmd(a.updateTag)
 			case "n", "N", "esc":
 				cmd := a.enterMain()
 				return a, cmd
@@ -222,7 +224,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.state == StateUpdatePrompt && msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionPress {
 			if zone.Get("update-yes").InBounds(msg) {
 				a.state = StateUpdateCheck
-				return a, doUpdateCmd(a.updateVersion)
+				return a, doUpdateCmd(a.updateTag)
 			}
 			if zone.Get("update-no").InBounds(msg) {
 				cmd := a.enterMain()
