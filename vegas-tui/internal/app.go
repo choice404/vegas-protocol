@@ -129,6 +129,27 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.items, cmd = a.items.Update(msg)
 		return a, cmd
 
+	// Raw touchscreen input — scale to terminal coordinates and re-process as mouse event
+	case rawTouchMsg:
+		if a.width == 0 || a.height == 0 {
+			return a, nil
+		}
+		termX := int(float64(msg.X) / touchMaxX * float64(a.width))
+		termY := int(float64(msg.Y) / touchMaxY * float64(a.height))
+		if termX >= a.width {
+			termX = a.width - 1
+		}
+		if termY >= a.height {
+			termY = a.height - 1
+		}
+		syntheticMouse := tea.MouseMsg{
+			X:      termX,
+			Y:      termY,
+			Button: tea.MouseButtonLeft,
+			Action: tea.MouseActionPress,
+		}
+		return a.Update(syntheticMouse)
+
 	// Update check result
 	case updateCheckMsg:
 		if msg.err != nil || !msg.hasUpdate {
