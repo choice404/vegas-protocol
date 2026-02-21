@@ -30,11 +30,12 @@ const (
 	TabProjects = 4
 	TabRadio    = 5
 	TabMap      = 6
-	TabSettings = 7
-	TabExit= 8
+	TabLink     = 7
+	TabSettings = 8
+	TabExit     = 9
 )
 
-var tabNames = []string{"STATS", "ITEMS", "DATA", "QUESTS", "PROJ", "RADIO", "MAP", "SET", "EXIT"}
+var tabNames = []string{"STATS", "ITEMS", "DATA", "QUESTS", "PROJ", "RADIO", "MAP", "LINK", "SET", "EXIT"}
 
 type App struct {
 	state     AppState
@@ -51,6 +52,7 @@ type App struct {
 	projects ProjectsModel
 	radio    RadioModel
 	mapV     MapModel
+	link     LinkModel
 	settings SettingsModel
 
 	// Shared settings
@@ -76,6 +78,7 @@ func NewApp() App {
 		projects:    NewProjectsModel(s),
 		radio:       NewRadioModel(s),
 		mapV:        NewMapModel(),
+		link:        NewLinkModel(s),
 		settings:    NewSettingsModel(s),
 	}
 }
@@ -91,6 +94,7 @@ func (a *App) enterMain() tea.Cmd {
 		a.data.Init(),
 		a.projects.Init(),
 		a.radio.Init(),
+		a.link.Init(),
 	)
 }
 
@@ -105,6 +109,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case QuestFromAIMsg:
 		var cmd tea.Cmd
 		a.quests, cmd = a.quests.Update(msg)
+		return a, cmd
+
+	// P2P messages routed to link regardless of active tab
+	case p2pIncomingMsg, p2pErrorMsg, p2pHostedMsg, p2pJoinedMsg:
+		var cmd tea.Cmd
+		a.link, cmd = a.link.Update(msg)
 		return a, cmd
 
 	// Spotify messages routed to radio regardless of active tab
@@ -221,9 +231,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.switchTab(TabMap)
 			return a, nil
 		case "8":
-			a.switchTab(TabSettings)
+			a.switchTab(TabLink)
 			return a, nil
 		case "9":
+			a.switchTab(TabSettings)
+			return a, nil
+		case "0":
 			return a, tea.Quit
 		}
 
@@ -270,6 +283,8 @@ func (a *App) isInputFocused() bool {
 		return a.quests.focus == focusAddQuest || a.quests.focus == focusAddTask
 	case TabProjects:
 		return a.projects.InputFocused()
+	case TabLink:
+		return a.link.InputFocused()
 	case TabSettings:
 		return a.settings.InputFocused()
 	}
@@ -305,6 +320,8 @@ func (a *App) updateActiveTab(msg tea.Msg) tea.Cmd {
 		a.radio, cmd = a.radio.Update(msg)
 	case TabMap:
 		a.mapV, cmd = a.mapV.Update(msg)
+	case TabLink:
+		a.link, cmd = a.link.Update(msg)
 	case TabSettings:
 		a.settings, cmd = a.settings.Update(msg)
 	case TabExit:
@@ -471,6 +488,8 @@ func (a App) renderContent(width, height int) string {
 		return a.radio.View(width, height)
 	case TabMap:
 		return a.mapV.View(width, height)
+	case TabLink:
+		return a.link.View(width, height)
 	case TabSettings:
 		return a.settings.View(width, height)
 	}
@@ -481,7 +500,7 @@ func (a App) renderFooter() string {
 	now := time.Now().Format("15:04:05")
 	status := theme.BaseStyle.Render("⚡ ONLINE")
 	clock := theme.DimStyle.Render(now)
-	tabHint := theme.DimStyle.Render("[Tab] Switch  [1-8] Jump  [q] Quit")
+	tabHint := theme.DimStyle.Render("[Tab] Switch  [1-9,0] Jump  [q] Quit")
 
 	left := fmt.Sprintf(" %s │ %s", status, clock)
 	right := tabHint + " "

@@ -22,6 +22,8 @@ type Settings struct {
 	CheckUpdates bool     `json:"check_updates"`
 	AutoUpdate   bool     `json:"auto_update"`
 	ProjectDirs  []string `json:"project_dirs"`
+	DisplayName  string   `json:"display_name"`
+	P2PPort      int      `json:"p2p_port"`
 }
 
 // QuestLine is a project/questline containing multiple tasks.
@@ -67,6 +69,8 @@ func DefaultSettings() *Settings {
 		CheckUpdates: true,
 		AutoUpdate:   false,
 		ProjectDirs:  []string{},
+		DisplayName:  "",
+		P2PPort:      9999,
 	}
 }
 
