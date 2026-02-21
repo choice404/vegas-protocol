@@ -78,9 +78,23 @@ func fetchStats() tea.Msg {
 		data.memTotal = vmem.Total
 	}
 
-	// Temperature
-	temps, err := host.SensorsTemperatures()
-	if err == nil {
+	// Temperature -- gopsutil returns warnings as errors even when data is valid,
+	// so check the slice regardless of err.
+	temps, _ := host.SensorsTemperatures()
+	// Prefer CPU package sensors, fall back to first valid reading.
+	cpuSensorKeys := []string{"k10temp_tctl", "coretemp_package_id_0", "cpu_thermal"}
+	for _, key := range cpuSensorKeys {
+		for _, t := range temps {
+			if t.SensorKey == key && t.Temperature > 0 {
+				data.temp = t.Temperature
+				break
+			}
+		}
+		if data.temp > 0 {
+			break
+		}
+	}
+	if data.temp == 0 {
 		for _, t := range temps {
 			if t.Temperature > 0 {
 				data.temp = t.Temperature
