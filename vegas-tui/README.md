@@ -94,28 +94,28 @@ git clone https://github.com/choice404/vegas-protocol.git
 cd vegas-protocol/vegas-tui
 
 # Build the TUI client
-go build -o vegas-protocol ./cmd/tui
+go build -o vegas-protocol ./cmd/vegas
 
 # Build the server
-go build -o vegas-server ./cmd/server
+go build -o vegas-server ./cmd/vegas-server
 ```
 
 ### Using go install
 
 ```bash
 # Install the TUI client
-go install github.com/choice404/vegas-protocol/vegas-tui/cmd/tui@latest
+go install github.com/choice404/vegas-protocol/vegas-tui/cmd/vegas@latest
 
 # Install the server
-go install github.com/choice404/vegas-protocol/vegas-tui/cmd/server@latest
+go install github.com/choice404/vegas-protocol/vegas-tui/cmd/vegas-server@latest
 ```
 
 ### Cross-Compile for Raspberry Pi
 
 ```bash
 cd vegas-tui
-GOOS=linux GOARCH=arm64 go build -o vegas-protocol ./cmd/tui
-GOOS=linux GOARCH=arm64 go build -o vegas-server ./cmd/server
+GOOS=linux GOARCH=arm64 go build -o vegas-protocol ./cmd/vegas
+GOOS=linux GOARCH=arm64 go build -o vegas-server ./cmd/vegas-server
 ```
 
 Transfer the binaries to your Pi via `scp` or USB.
