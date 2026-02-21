@@ -22,6 +22,10 @@ func main() {
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),
 	)
+
+	// Start raw touchscreen listener for Raspberry Pi (no-op on non-Pi)
+	go internal.StartTouchListener(p)
+
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
