@@ -12,12 +12,14 @@ const configDirName = "vegas-protocol"
 
 // Settings holds user preferences persisted to disk.
 type Settings struct {
-	Editor      string   `json:"editor"`
-	ServerURL   string   `json:"server_url"`
-	OllamaURL   string   `json:"ollama_url"`
-	OllamaModel string   `json:"ollama_model"`
-	Theme       string   `json:"theme"`
-	ProjectDirs []string `json:"project_dirs"`
+	Editor       string   `json:"editor"`
+	ServerURL    string   `json:"server_url"`
+	OllamaURL    string   `json:"ollama_url"`
+	OllamaModel  string   `json:"ollama_model"`
+	Theme        string   `json:"theme"`
+	CheckUpdates bool     `json:"check_updates"`
+	AutoUpdate   bool     `json:"auto_update"`
+	ProjectDirs  []string `json:"project_dirs"`
 }
 
 // QuestLine is a project/questline containing multiple tasks.
@@ -55,12 +57,14 @@ func detectEditor() string {
 // DefaultSettings returns sensible defaults.
 func DefaultSettings() *Settings {
 	return &Settings{
-		Editor:      detectEditor(),
-		ServerURL:   "http://localhost:8080",
-		OllamaURL:   "http://localhost:11434",
-		OllamaModel: "llama3.1:8b",
-		Theme:       "green",
-		ProjectDirs: []string{},
+		Editor:       detectEditor(),
+		ServerURL:    "http://localhost:8080",
+		OllamaURL:    "http://localhost:11434",
+		OllamaModel:  "llama3.1:8b",
+		Theme:        "green",
+		CheckUpdates: true,
+		AutoUpdate:   false,
+		ProjectDirs:  []string{},
 	}
 }
 

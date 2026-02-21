@@ -17,6 +17,8 @@ type AppState int
 
 const (
 	StateBoot AppState = iota
+	StateUpdateCheck
+	StateUpdatePrompt
 	StateMain
 )
 
@@ -53,6 +55,10 @@ type App struct {
 
 	// Shared settings
 	appSettings *settings.Settings
+
+	// Update check
+	updateVersion string // tag of the available update (e.g. "v0.1.0")
+	updateError   string // error message if check/update failed
 }
 
 func NewApp() App {
@@ -77,6 +83,15 @@ func (a App) Init() tea.Cmd {
 	return a.boot.Init()
 }
 
+func (a *App) enterMain() tea.Cmd {
+	a.state = StateMain
+	return tea.Batch(
+		a.stats.Init(),
+		a.data.Init(),
+		a.projects.Init(),
+	)
+}
+
 func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -90,6 +105,36 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.quests, cmd = a.quests.Update(msg)
 		return a, cmd
 
+	// Update check result
+	case updateCheckMsg:
+		if msg.err != nil || !msg.hasUpdate {
+			// No update or error checking -- proceed to main
+			cmd := a.enterMain()
+			return a, cmd
+		}
+		// Update available
+		a.updateVersion = msg.release.TagName
+		if a.appSettings.AutoUpdate {
+			// Auto-update without prompting
+			a.state = StateUpdateCheck
+			return a, doUpdateCmd(a.updateVersion)
+		}
+		// Prompt user
+		a.state = StateUpdatePrompt
+		return a, nil
+
+	// Update install result
+	case updateDoneMsg:
+		if msg.err != nil {
+			a.updateError = msg.err.Error()
+			// Show error briefly, then proceed to main
+			cmd := a.enterMain()
+			return a, cmd
+		}
+		// Success -- set restart flag and quit so main() can re-exec
+		RestartAfterUpdate = true
+		return a, tea.Quit
+
 	case tea.KeyMsg:
 		// Global quit
 		if msg.String() == "ctrl+c" {
@@ -99,16 +144,34 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Boot state: any key to continue after boot completes
 		if a.state == StateBoot {
 			if a.boot.done {
-				a.state = StateMain
-				return a, tea.Batch(
-					a.stats.Init(),
-					a.data.Init(),
-					a.projects.Init(),
-				)
+				if a.appSettings.CheckUpdates {
+					a.state = StateUpdateCheck
+					return a, checkForUpdatesCmd()
+				}
+				cmd := a.enterMain()
+				return a, cmd
 			}
 			var cmd tea.Cmd
 			a.boot, cmd = a.boot.Update(msg)
 			return a, cmd
+		}
+
+		// Update prompt: Y to update, N/Esc to skip
+		if a.state == StateUpdatePrompt {
+			switch msg.String() {
+			case "y", "Y":
+				a.state = StateUpdateCheck
+				return a, doUpdateCmd(a.updateVersion)
+			case "n", "N", "esc":
+				cmd := a.enterMain()
+				return a, cmd
+			}
+			return a, nil
+		}
+
+		// Ignore keys during update check (waiting for network)
+		if a.state == StateUpdateCheck {
+			return a, nil
 		}
 
 		// Don't intercept keys when an input is focused
@@ -156,6 +219,18 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.MouseMsg:
+		if a.state == StateUpdatePrompt && msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionPress {
+			if zone.Get("update-yes").InBounds(msg) {
+				a.state = StateUpdateCheck
+				return a, doUpdateCmd(a.updateVersion)
+			}
+			if zone.Get("update-no").InBounds(msg) {
+				cmd := a.enterMain()
+				return a, cmd
+			}
+			return a, nil
+		}
+
 		if a.state == StateMain && msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionPress {
 			for i := range tabNames {
 				if zone.Get(fmt.Sprintf("tab-%d", i)).InBounds(msg) {
@@ -229,9 +304,84 @@ func (a *App) updateActiveTab(msg tea.Msg) tea.Cmd {
 	return cmd
 }
 
+func (a App) renderUpdateView() string {
+	var b strings.Builder
+
+	b.WriteString(theme.BoldStyle.Render(theme.Logo))
+	b.WriteString("\n")
+	b.WriteString(theme.AmberStyle.Render("  " + theme.Subtitle))
+	b.WriteString("\n")
+	b.WriteString(theme.DimStyle.Render("  " + theme.Divider))
+	b.WriteString("\n\n")
+
+	if a.state == StateUpdateCheck {
+		if a.updateVersion != "" {
+			// Installing update
+			b.WriteString(theme.AmberStyle.Render("  INSTALLING UPDATE..."))
+			b.WriteString("\n\n")
+			b.WriteString(fmt.Sprintf("  %s %s  %s  %s",
+				theme.DimStyle.Render("CURRENT:"),
+				theme.BaseStyle.Render("v"+Version),
+				theme.AmberStyle.Render("->"),
+				theme.AmberStyle.Render(a.updateVersion),
+			))
+			b.WriteString("\n\n")
+			b.WriteString(theme.DimStyle.Render("  Please wait..."))
+		} else {
+			// Checking for updates
+			b.WriteString(theme.BaseStyle.Render("  CHECKING FOR UPDATES..."))
+			b.WriteString("\n\n")
+			b.WriteString(theme.DimStyle.Render("  Contacting GitHub..."))
+		}
+	}
+
+	if a.state == StateUpdatePrompt {
+		b.WriteString(theme.AmberStyle.Render("  UPDATE AVAILABLE"))
+		b.WriteString("\n\n")
+		b.WriteString(fmt.Sprintf("  %s %s",
+			theme.DimStyle.Render("CURRENT VERSION:"),
+			theme.BaseStyle.Render("v"+Version),
+		))
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf("  %s %s",
+			theme.DimStyle.Render("LATEST VERSION: "),
+			theme.AmberStyle.Render(a.updateVersion),
+		))
+		b.WriteString("\n\n")
+		b.WriteString(theme.BaseStyle.Render("  Install update?"))
+		b.WriteString("\n\n")
+		b.WriteString("  ")
+		b.WriteString(zone.Mark("update-yes", theme.AmberStyle.Render("[ YES ]")))
+		b.WriteString("  ")
+		b.WriteString(zone.Mark("update-no", theme.BaseStyle.Render("[ NO ]")))
+		b.WriteString("\n\n")
+		b.WriteString(theme.DimStyle.Render("  [Y] Update  [N] Skip"))
+	}
+
+	if a.updateError != "" {
+		b.WriteString("\n")
+		b.WriteString(theme.RedStyle.Render("  ERROR: " + a.updateError))
+		b.WriteString("\n")
+	}
+
+	content := b.String()
+	box := theme.BorderStyle.
+		Width(56).
+		Render(content)
+
+	return lipgloss.Place(a.width, a.height,
+		lipgloss.Center, lipgloss.Center,
+		box,
+	)
+}
+
 func (a App) View() string {
 	if a.state == StateBoot {
 		return zone.Scan(a.boot.View(a.width, a.height))
+	}
+
+	if a.state == StateUpdateCheck || a.state == StateUpdatePrompt {
+		return zone.Scan(a.renderUpdateView())
 	}
 
 	// Header
@@ -269,7 +419,7 @@ func (a App) View() string {
 }
 
 func (a App) renderHeader() string {
-	title := theme.BoldStyle.Render(" V.E.G.A.S. PROTOCOL v0.0.3 ")
+	title := theme.BoldStyle.Render(fmt.Sprintf(" V.E.G.A.S. PROTOCOL v%s ", Version))
 	padding := a.width - lipgloss.Width(title) - 2
 	if padding < 0 {
 		padding = 0

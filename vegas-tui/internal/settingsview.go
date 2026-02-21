@@ -15,9 +15,10 @@ import (
 type settingsSavedMsg struct{}
 
 type settingEntry struct {
-	Key   string
-	Label string
-	Value string
+	Key    string
+	Label  string
+	Value  string
+	IsBool bool
 }
 
 type SettingsModel struct {
@@ -42,6 +43,13 @@ func NewSettingsModel(s *settings.Settings) SettingsModel {
 	return m
 }
 
+func boolToStr(v bool) string {
+	if v {
+		return "ON"
+	}
+	return "OFF"
+}
+
 func (m *SettingsModel) refreshEntries() {
 	s := m.appSettings
 	m.entries = []settingEntry{
@@ -50,6 +58,8 @@ func (m *SettingsModel) refreshEntries() {
 		{Key: "ollama_url", Label: "OLLAMA URL", Value: s.OllamaURL},
 		{Key: "ollama_model", Label: "OLLAMA MODEL", Value: s.OllamaModel},
 		{Key: "theme", Label: "THEME", Value: s.Theme},
+		{Key: "check_updates", Label: "CHECK UPDATES", Value: boolToStr(s.CheckUpdates), IsBool: true},
+		{Key: "auto_update", Label: "AUTO UPDATE", Value: boolToStr(s.AutoUpdate), IsBool: true},
 	}
 	// Add project dirs as separate entries
 	for i, d := range s.ProjectDirs {
@@ -81,6 +91,10 @@ func (m *SettingsModel) applyEntry(idx int, val string) {
 		if val == "green" || val == "amber" {
 			s.Theme = val
 		}
+	case "check_updates":
+		s.CheckUpdates = !s.CheckUpdates
+	case "auto_update":
+		s.AutoUpdate = !s.AutoUpdate
 	default:
 		if strings.HasPrefix(key, "project_dir_") {
 			// Parse index from key
@@ -135,6 +149,11 @@ func (m SettingsModel) Update(msg tea.Msg) (SettingsModel, tea.Cmd) {
 			}
 		case "enter":
 			if m.cursor < len(m.entries) {
+				if m.entries[m.cursor].IsBool {
+					m.applyEntry(m.cursor, "")
+					m.dirty = true
+					return m, nil
+				}
 				m.editing = true
 				m.input.SetValue(m.entries[m.cursor].Value)
 				m.input.Focus()
@@ -166,6 +185,8 @@ func (m SettingsModel) Update(msg tea.Msg) (SettingsModel, tea.Cmd) {
 				m.appSettings.OllamaURL = defaults.OllamaURL
 				m.appSettings.OllamaModel = defaults.OllamaModel
 				m.appSettings.Theme = defaults.Theme
+				m.appSettings.CheckUpdates = defaults.CheckUpdates
+				m.appSettings.AutoUpdate = defaults.AutoUpdate
 				m.dirty = true
 				m.refreshEntries()
 				return m, nil
@@ -223,8 +244,8 @@ func (m SettingsModel) View(width, height int) string {
 		b.WriteString(line)
 		b.WriteString("\n")
 
-		// Separator between sections
-		if e.Key == "theme" && i < len(m.entries)-1 {
+		// Separators between sections
+		if i < len(m.entries)-1 {
 			divW := width - 8
 			if divW < 20 {
 				divW = 20
@@ -232,11 +253,20 @@ func (m SettingsModel) View(width, height int) string {
 			if divW > 50 {
 				divW = 50
 			}
-			b.WriteString("\n")
-			b.WriteString(theme.DimStyle.Render("  " + strings.Repeat("─", divW)))
-			b.WriteString("\n")
-			b.WriteString(theme.DimStyle.Render("  PROJECT DIRECTORIES:"))
-			b.WriteString("\n\n")
+			if e.Key == "theme" {
+				b.WriteString("\n")
+				b.WriteString(theme.DimStyle.Render("  " + strings.Repeat("─", divW)))
+				b.WriteString("\n")
+				b.WriteString(theme.DimStyle.Render("  UPDATES:"))
+				b.WriteString("\n\n")
+			}
+			if e.Key == "auto_update" {
+				b.WriteString("\n")
+				b.WriteString(theme.DimStyle.Render("  " + strings.Repeat("─", divW)))
+				b.WriteString("\n")
+				b.WriteString(theme.DimStyle.Render("  PROJECT DIRECTORIES:"))
+				b.WriteString("\n\n")
+			}
 		}
 	}
 
