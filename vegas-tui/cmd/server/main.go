@@ -9,9 +9,9 @@ import (
 	"os/signal"
 	"syscall"
 
-	"rebel-hacks-tui/internal/config"
-	"rebel-hacks-tui/internal/db"
-	"rebel-hacks-tui/internal/server"
+	"github.com/choice404/vegas-protocol/vegas-tui/internal/config"
+	"github.com/choice404/vegas-protocol/vegas-tui/internal/db"
+	"github.com/choice404/vegas-protocol/vegas-tui/internal/server"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )

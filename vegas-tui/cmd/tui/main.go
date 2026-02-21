@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"rebel-hacks-tui/internal"
+	"github.com/choice404/vegas-protocol/vegas-tui/internal"
 
 	tea "github.com/charmbracelet/bubbletea"
 	zone "github.com/lrstanley/bubblezone"

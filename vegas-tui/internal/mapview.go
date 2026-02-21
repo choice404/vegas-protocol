@@ -3,7 +3,7 @@ package internal
 import (
 	"strings"
 
-	"rebel-hacks-tui/internal/theme"
+	"github.com/choice404/vegas-protocol/vegas-tui/internal/theme"
 
 	tea "github.com/charmbracelet/bubbletea"
 	zone "github.com/lrstanley/bubblezone"

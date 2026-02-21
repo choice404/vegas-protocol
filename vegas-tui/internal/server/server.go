@@ -3,9 +3,9 @@ package server
 import (
 	"net/http"
 
-	"rebel-hacks-tui/internal/config"
-	"rebel-hacks-tui/internal/server/handlers"
-	"rebel-hacks-tui/internal/server/middleware"
+	"github.com/choice404/vegas-protocol/vegas-tui/internal/config"
+	"github.com/choice404/vegas-protocol/vegas-tui/internal/server/handlers"
+	"github.com/choice404/vegas-protocol/vegas-tui/internal/server/middleware"
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"

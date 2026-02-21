@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"rebel-hacks-tui/internal/settings"
-	"rebel-hacks-tui/internal/theme"
+	"github.com/choice404/vegas-protocol/vegas-tui/internal/settings"
+	"github.com/choice404/vegas-protocol/vegas-tui/internal/theme"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"

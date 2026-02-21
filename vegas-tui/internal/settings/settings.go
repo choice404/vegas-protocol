@@ -124,8 +124,8 @@ func SaveQuests(quests []QuestLine) error {
 func DefaultQuests() []QuestLine {
 	return []QuestLine{
 		{
-			ID:          "rebel-hacks-2025",
-			Name:        "REBEL HACKS 2025",
+			ID:          "rebel-hacks-2026",
+			Name:        "REBEL HACKS 2026",
 			Description: "UNLV Hackathon - V.E.G.A.S. Protocol",
 			Priority:    "high",
 			CreatedAt:   time.Now().Format(time.RFC3339),

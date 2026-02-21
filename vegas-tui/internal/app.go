@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"rebel-hacks-tui/internal/settings"
-	"rebel-hacks-tui/internal/theme"
+	"github.com/choice404/vegas-protocol/vegas-tui/internal/settings"
+	"github.com/choice404/vegas-protocol/vegas-tui/internal/theme"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
