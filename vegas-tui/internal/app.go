@@ -241,6 +241,15 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.MouseMsg:
+		if a.state == StateBoot && a.boot.done && msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionPress {
+			if a.appSettings.CheckUpdates {
+				a.state = StateUpdateCheck
+				return a, checkForUpdatesCmd()
+			}
+			cmd := a.enterMain()
+			return a, cmd
+		}
+
 		if a.state == StateUpdatePrompt && msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionPress {
 			if zone.Get("update-yes").InBounds(msg) {
 				a.state = StateUpdateCheck

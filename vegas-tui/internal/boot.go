@@ -9,6 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	zone "github.com/lrstanley/bubblezone"
 )
 
 type bootTickMsg struct{}
@@ -118,8 +119,11 @@ func (m BootModel) View(width, height int) string {
 	if m.step > len(bootSteps) {
 		b.WriteString("\n")
 		b.WriteString(theme.AmberStyle.Render("  SYSTEM READY. WELCOME, COURIER."))
-		b.WriteString("\n")
-		b.WriteString(theme.DimStyle.Render("  Press any key to continue..."))
+		b.WriteString("\n\n")
+		b.WriteString("  ")
+		b.WriteString(zone.Mark("boot-enter", theme.AmberStyle.Render("[ ENTER SYSTEM ]")))
+		b.WriteString("\n\n")
+		b.WriteString(theme.DimStyle.Render("  Press any key or tap to continue..."))
 	}
 
 	content := b.String()
